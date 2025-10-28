@@ -43,8 +43,9 @@ void initShader() {
 void onNewWindow(void *self, std::any data) {
   const auto PWINDOW = std::any_cast<PHLWINDOW>(data);
 
-  HyprlandAPI::addWindowDecoration(PHANDLE, PWINDOW,
-                                   makeUnique<LiquidGlassDecoration>(PWINDOW));
+  auto pDec = makeUnique<LiquidGlassDecoration>(PWINDOW);
+  g_registeredDecorationPtrs.push_back(pDec.get());
+  HyprlandAPI::addWindowDecoration(PHANDLE, PWINDOW, std::move(pDec));
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() { return HYPRLAND_API_VERSION; }
@@ -73,14 +74,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     if (w->isHidden() || !w->m_isMapped)
       continue;
 
-    HyprlandAPI::addWindowDecoration(PHANDLE, w,
-                                     makeUnique<LiquidGlassDecoration>(w));
+    auto pDec = makeUnique<LiquidGlassDecoration>(w);
+    g_registeredDecorationPtrs.push_back(pDec.get());
+    HyprlandAPI::addWindowDecoration(PHANDLE, w, std::move(pDec));
   }
 
   return PLUGIN_INFO;
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+  for (const auto &pDecPtr : g_registeredDecorationPtrs) {
+    HyprlandAPI::removeWindowDecoration(PHANDLE, pDecPtr);
+  };
+
   g_pHyprRenderer->m_renderPass.removeAllOfType("LiquidGlassPassElemnet");
   SHADER.destroy();
 }
