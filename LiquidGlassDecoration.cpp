@@ -5,6 +5,7 @@
 #include <GLES3/gl32.h>
 #include <hyprutils/math/Misc.hpp>
 #include <hyprutils/math/Region.hpp>
+#include <hyprutils/math/Vector2D.hpp>
 #include <src/desktop/Window.hpp>
 #include <src/render/Framebuffer.hpp>
 #include <src/render/OpenGL.hpp>
@@ -13,11 +14,12 @@
 
 LiquidGlassDecoration::LiquidGlassDecoration(PHLWINDOW pWindow)
     : IHyprWindowDecoration(pWindow), m_window(pWindow) {
+  pWindow->m_windowData.noBlur = true;
   Logs::info("Decoration Init", true);
 }
 
 eDecorationLayer LiquidGlassDecoration::getDecorationLayer() {
-  return DECORATION_LAYER_UNDER;
+  return DECORATION_LAYER_BOTTOM;
 }
 
 uint64_t LiquidGlassDecoration::getDecorationFlags() {
@@ -49,42 +51,13 @@ void LiquidGlassDecoration::draw(PHLMONITOR pMonitor, float const &a) {
   g_pHyprRenderer->m_renderPass.add(makeUnique<LiquidGlassPassElemnet>(data));
 }
 
-void LiquidGlassDecoration::renderPass(PHLMONITOR pMonitor, const float &a) {
-  const auto PWINDOW = m_window.lock();
-  const auto PWORKSPACE = m_window->m_workspace;
-
-  const auto WORKSPACEOFFSET = PWORKSPACE && !m_window->m_pinned
-                                   ? PWORKSPACE->m_renderOffset->value()
-                                   : Vector2D();
-  const auto SOURCE = g_pHyprOpenGL->m_renderData.currentFB;
-
-  auto thisbox = PWINDOW->getWindowMainSurfaceBox();
-
-  CBox wlrbox =
-      thisbox.translate(WORKSPACEOFFSET)
-          .translate(-pMonitor->m_position + m_window->m_floatingOffset)
-          .scale(pMonitor->m_scale)
-          .round();
-  CBox transformBox = wlrbox;
-
-  const auto TR = wlTransformToHyprutils(
-      invertTransform(g_pHyprOpenGL->m_renderData.pMonitor->m_transform));
-  transformBox.transform(
-      TR, g_pHyprOpenGL->m_renderData.pMonitor->m_transformedSize.x,
-      g_pHyprOpenGL->m_renderData.pMonitor->m_transformedSize.y);
-
-  sampleBackground(*SOURCE, transformBox);
-  liquidGlassShader(m_sampleBF, *SOURCE, wlrbox);
-}
-
-void LiquidGlassDecoration::liquidGlassShader(CFramebuffer &sourceBF,
-                                              CFramebuffer &targetBF,
-                                              CBox box) {
+void liquidGlassShader(CFramebuffer &sourceBF, CFramebuffer &targetBF,
+                       CBox &rawBox, CBox &transformedBox, float radius) {
   const auto TR = wlTransformToHyprutils(
       invertTransform(g_pHyprOpenGL->m_renderData.pMonitor->m_transform));
 
   Mat3x3 matrix = g_pHyprOpenGL->m_renderData.monitorProjection.projectBox(
-      box, TR, box.rot);
+      rawBox, TR, rawBox.rot);
   Mat3x3 glMatrix =
       g_pHyprOpenGL->m_renderData.projection.copy().multiply(matrix);
   auto tex = sourceBF.getTexture();
@@ -98,8 +71,21 @@ void LiquidGlassDecoration::liquidGlassShader(CFramebuffer &sourceBF,
   SHADER.setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, glMatrix.getMatrix());
   SHADER.setUniformInt(SHADER_TEX, 0);
 
+  const auto TOPLEFT = Vector2D(transformedBox.x, transformedBox.y);
+  const auto FULLSIZE = Vector2D(transformedBox.width, transformedBox.height);
+  const auto FBOSIZE = Vector2D(targetBF.m_size.x, targetBF.m_size.y);
+
+  SHADER.setUniformFloat2(SHADER_TOP_LEFT, sc<float>(TOPLEFT.x),
+                          sc<float>(TOPLEFT.y));
+  SHADER.setUniformFloat2(SHADER_FULL_SIZE, sc<float>(FULLSIZE.x),
+                          sc<float>(FULLSIZE.y));
+  glUniform2f(glGetAttribLocation(SHADER.program, "fboSize"),
+              sc<float>(FBOSIZE.x), sc<float>(FBOSIZE.y));
+
+  SHADER.setUniformFloat(SHADER_RADIUS, 20.);
+
   glBindVertexArray(SHADER.uniformLocations[SHADER_SHADER_VAO]);
-  g_pHyprOpenGL->scissor(box);
+  g_pHyprOpenGL->scissor(rawBox);
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   g_pHyprOpenGL->scissor(nullptr);
 }
@@ -119,6 +105,35 @@ void LiquidGlassDecoration::sampleBackground(CFramebuffer &sourceBF, CBox box) {
 
   glBlitFramebuffer(x0, y0, x1, y1, 0, 0, box.width, box.height,
                     GL_COLOR_BUFFER_BIT, GL_LINEAR);
+}
+
+void LiquidGlassDecoration::renderPass(PHLMONITOR pMonitor, const float &a) {
+  const auto PWINDOW = m_window.lock();
+  const auto PWORKSPACE = m_window->m_workspace;
+
+  const auto WORKSPACEOFFSET = PWORKSPACE && !m_window->m_pinned
+                                   ? PWORKSPACE->m_renderOffset->value()
+                                   : Vector2D();
+  const auto SOURCE = g_pHyprOpenGL->m_renderData.currentFB;
+  const auto RADUIS = PWINDOW->rounding();
+
+  auto thisbox = PWINDOW->getWindowMainSurfaceBox();
+
+  CBox wlrbox =
+      thisbox.translate(WORKSPACEOFFSET)
+          .translate(-pMonitor->m_position + m_window->m_floatingOffset)
+          .scale(pMonitor->m_scale)
+          .round();
+  CBox transformBox = wlrbox;
+
+  const auto TR = wlTransformToHyprutils(
+      invertTransform(g_pHyprOpenGL->m_renderData.pMonitor->m_transform));
+  transformBox.transform(
+      TR, g_pHyprOpenGL->m_renderData.pMonitor->m_transformedSize.x,
+      g_pHyprOpenGL->m_renderData.pMonitor->m_transformedSize.y);
+
+  sampleBackground(*SOURCE, transformBox);
+  liquidGlassShader(m_sampleBF, *SOURCE, wlrbox, transformBox, RADUIS);
 }
 
 void LiquidGlassDecoration::updateWindow(PHLWINDOW pWindow) {

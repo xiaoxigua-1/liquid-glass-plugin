@@ -12,6 +12,8 @@ struct box {
 
 class LiquidGlassDecoration : public IHyprWindowDecoration {
 public:
+  PHLWINDOWREF m_window;
+
   LiquidGlassDecoration(PHLWINDOW);
   virtual ~LiquidGlassDecoration() = default;
 
@@ -33,14 +35,9 @@ public:
 
   virtual std::string getDisplayName();
 
-  void liquidGlassShader(CFramebuffer &sourceBF, CFramebuffer &targetBF,
-                         CBox box);
-
   void sampleBackground(CFramebuffer &sourceBF, CBox box);
   void renderPass(PHLMONITOR pMonitor, const float &a);
 
 private:
-  PHLWINDOWREF m_window;
-
   CFramebuffer m_sampleBF;
 };

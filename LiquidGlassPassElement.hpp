@@ -19,6 +19,7 @@ public:
   virtual void draw(const CRegion &damage);
   virtual bool needsLiveBlur();
   virtual bool needsPrecomputeBlur();
+  virtual std::optional<CBox> boundingBox();
 
   virtual const char *passName() { return "LiquidGlassPassElemnet"; }
 

@@ -26,16 +26,28 @@ std::string loadShader(const char *fileName) {
 }
 
 void initShader() {
+  const char *shaderFile = "liquidGlass.frag";
   GLuint prog = g_pHyprOpenGL->createProgram(
-      g_pHyprOpenGL->m_shaders->TEXVERTSRC, loadShader("red.frag"), true);
+      g_pHyprOpenGL->m_shaders->TEXVERTSRC, loadShader(shaderFile), true);
+
+  if (prog == 0) {
+    std::string message = std::format("Couldn't compile shader {}", shaderFile);
+    Logs::error(message);
+    throw std::runtime_error(message);
+  }
 
   SHADER.program = prog;
   SHADER.uniformLocations[SHADER_PROJ] = glGetUniformLocation(prog, "proj");
   SHADER.uniformLocations[SHADER_POS_ATTRIB] = glGetAttribLocation(prog, "pos");
   SHADER.uniformLocations[SHADER_TEX_ATTRIB] =
       glGetAttribLocation(prog, "texcoord");
-  SHADER.uniformLocations[SHADER_RADIUS] = glGetAttribLocation(prog, "radius");
   SHADER.uniformLocations[SHADER_TEX] = glGetAttribLocation(prog, "tex");
+
+  SHADER.uniformLocations[SHADER_RADIUS] = glGetAttribLocation(prog, "radius");
+  SHADER.uniformLocations[SHADER_TOP_LEFT] =
+      glGetAttribLocation(prog, "topLeft");
+  SHADER.uniformLocations[SHADER_FULL_SIZE] =
+      glGetAttribLocation(prog, "fullSize");
 
   SHADER.createVao();
 }
